@@ -4,11 +4,13 @@ from ATARVA.sub_operation_utils import *
 from ATARVA.somatic_utils import *
 
 import numpy as np
+from scipy.cluster.hierarchy import linkage, fcluster
 from sklearn.neighbors import KernelDensity
 from scipy.signal import find_peaks
 from scipy.signal import peak_prominences
 from scipy.signal import peak_widths
 import warnings
+import stringzilla as sz
 from threadpoolctl import threadpool_limits
    
 def homo_vcf_call(alen, read_seqs, haplotypes, DP, amplicon, motif_size, ref, contig, locus_key, global_loci_info, global_loci_variations, out, log_bool, decomp, hallele_counter):
@@ -288,39 +290,70 @@ def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, 
         # labels = np.where(data <= split, 0, 1)
 
 
-        #### KDE with mode peaks and valley for single split point ---------------------- New trial experiment with distance parameter
-        bandwidth = 0.1; tot_data_points = 100
-        if motif_size == 1:
-            bandwidth = 0.1
-        # Fit kde to the data
-        kde = KernelDensity(kernel='gaussian', algorithm='kd_tree', metric='minkowski', bandwidth=bandwidth).fit(data)
-        # Evaluate the density on a grid
-        x_grid = np.linspace(data.min()-10, data.max()+10, tot_data_points).reshape(-1, 1)
-        log_density = kde.score_samples(x_grid)
-        density = np.exp(log_density)
+        # #### KDE with mode peaks and valley for single split point ---------------------- New trial experiment with distance parameter
+        # bandwidth = 0.1; tot_data_points = 100
+        # if motif_size == 1:
+        #     bandwidth = 0.1
+        # # Fit kde to the data
+        # kde = KernelDensity(kernel='gaussian', algorithm='kd_tree', metric='minkowski', bandwidth=bandwidth).fit(data)
+        # # Evaluate the density on a grid
+        # x_grid = np.linspace(data.min()-10, data.max()+10, tot_data_points).reshape(-1, 1)
+        # log_density = kde.score_samples(x_grid)
+        # density = np.exp(log_density)
 
-        # Analysing the distribution
-        valleys, _ = find_peaks(-density)
-        dist = int(np.median(np.diff(valleys))) if len(valleys) > 1 else 1
+        # # Analysing the distribution
+        # valleys, _ = find_peaks(-density)
+        # dist = int(np.median(np.diff(valleys))) if len(valleys) > 1 else 1
 
-        # Getting the peaks & valleys
-        peaks, _ = find_peaks(density, distance=dist)
+        # # Getting the peaks & valleys
+        # peaks, _ = find_peaks(density, distance=dist)
 
-        # Getting the split point for clustering
-        peak_heights = density[peaks] # extracting only the peaks frim density
-        top_peaks = peaks[np.argsort(peak_heights)[-2:]] # taking top two peaks
+        # # Getting the split point for clustering
+        # peak_heights = density[peaks] # extracting only the peaks frim density
+        # top_peaks = peaks[np.argsort(peak_heights)[-2:]] # taking top two peaks
 
-        if len(top_peaks) == 2:
-            left, right = sorted(top_peaks)
-            valid_valleys = valleys[(valleys > left) & (valleys < right)] # extracting the middle split point based on the valley between top two peaks
+        # if len(top_peaks) == 2:
+        #     left, right = sorted(top_peaks)
+        #     valid_valleys = valleys[(valleys > left) & (valleys < right)] # extracting the middle split point based on the valley between top two peaks
 
-            # split = x_grid[valid_valleys][0][0] # removed --------------- new testing
-            split = np.median(x_grid[valid_valleys]) # taking the median of the valley points as split point to avoid outlier effect
+        #     # split = x_grid[valid_valleys][0][0] # removed --------------- new testing
+        #     split = np.median(x_grid[valid_valleys]) # taking the median of the valley points as split point to avoid outlier effect
 
-        else:
-            split = x_grid[-1][0] # Homozygous cluster; taking the max value as split point to assign all data points to one cluster
+        # else:
+        #     split = x_grid[-1][0] # Homozygous cluster; taking the max value as split point to assign all data points to one cluster
 
-        labels = np.where(data <= split, 0, 1)
+        # labels = np.where(data <= split, 0, 1)
+
+        #### Edit-distance based clustering 
+        # seq_list = []
+        # for read_id in main_read_id:
+        #     seq_list.append(read_seqs[read_id][0])
+        # distance_matrix = build_distance_matrix(seq_list)
+        # linkage_matrix = linkage(distance_matrix, method='complete')
+        # cluster_labels = fcluster(linkage_matrix, t=3, criterion='maxclust')
+        # major_clusters = list(dict(Counter(cluster_labels).most_common(2)).keys())
+        # labels = cluster_labels
+        # for idx,k in enumerate(cluster_labels):
+        #     if k in major_clusters:
+        #         labels[idx] = major_clusters.index(k)
+        #     else:
+        #         labels[idx] = -1
+
+        ref_seq = ref.fetch(contig, locus_start, locus_end)
+        edit_list = []
+        for read_id in main_read_id:
+            current_seq = read_seqs[read_id][0]
+            current_seq_len = len(current_seq)
+            # current_seq_len = np.inf if current_seq_len == 0 else current_seq_len
+            # edit_list.append( round( sz.edit_distance(ref_seq, current_seq)  /  current_seq_len, 3 ) )
+
+            edit_list.append( [sz.edit_distance(ref_seq, current_seq),  current_seq_len] ) 
+
+        del current_seq
+        db_status, labels, _ = dbscan(edit_list, None, 0.1)
+
+        if not db_status: # if dbscan fails, assign it as homozygous
+            labels = [0]*len(main_read_id)
 
     c1 = [i for i, x in enumerate(labels) if x == 0]
     c2 = [i for i, x in enumerate(labels) if x == 1]
@@ -357,6 +390,8 @@ def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, 
                                
         elif len(c2) < cutoff and len(c1) >= cutoff:
             process_conditions(alen_c2, alen_c1)
+
+    cutoff = int(cutoff)
 
     if male:
         cluster_len = [len(c1), len(c2)]

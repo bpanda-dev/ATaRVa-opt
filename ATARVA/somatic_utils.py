@@ -14,7 +14,7 @@ def build_distance_matrix(tot_seqs):
             a = tot_seqs[i]; b = tot_seqs[j]
             dist = sz.edit_distance(a, b)
             max_len = max(len(a), len(b))
-            score = dist/max_len
+            score = dist/max_len if max_len > 0 else 0
             distance_matrix.append(score)
     return np.array(distance_matrix)
 
