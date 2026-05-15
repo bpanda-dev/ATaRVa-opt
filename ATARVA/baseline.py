@@ -6,7 +6,6 @@ from ATARVA.genotype_utils import analyse_genotype
 from ATARVA.vcf_writer import *
 from ATARVA.consensus import consensus_seq_poa
 from ATARVA.sub_operation_utils import *
-from ATARVA.sub_operation_utils import *
 
 from tqdm import tqdm
 import pysam
@@ -93,10 +92,6 @@ def locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, 
                 ALT_seqs.append(ALT)
                 genotypes.append(allele_length)
                 allele_count.append(len(hap_reads))
-                # if allele_length not in allele_count:
-                #     allele_count[allele_length] = len(hap_reads)
-                # else:
-                #     allele_count[str(allele_length)] = len(hap_reads)
 
                 meth_info.append(methylation_calc(hap_reads, global_loci_variations, locus_key, ALT))
 

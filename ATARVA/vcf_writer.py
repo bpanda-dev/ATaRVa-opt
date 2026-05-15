@@ -183,7 +183,7 @@ def vcf_heterozygous_writer(contig, genotypes, locus_start, locus_end, allele_co
             if ALT_reads.index(ref_seq) == 0:
                 PC = str(phased_read[0])+','+str(phased_read[1])
 
-                alt_seqs.append(None) # dummy added for ref, to keep the length of alt_seqs as 2
+                alt_seqs.append(None) # dummy added for ref, to keep the length of alt_seqs as 2 && Add ref 1st for consistent order with GT
                 ALT = ALT_reads[1]
                 if ALT[0]!='<': alt_seqs.append(ALT)
                 else: alt_seqs.append('')
@@ -193,10 +193,10 @@ def vcf_heterozygous_writer(contig, genotypes, locus_start, locus_end, allele_co
             else:
                 PC = str(phased_read[1])+','+str(phased_read[0])
 
+                alt_seqs.append(None) # dummy added for ref, to keep the length of alt_seqs as 2 && Add ref 1st for consistent order with GT
                 ALT = ALT_reads[0]
                 if ALT[0]!='<': alt_seqs.append(ALT)
                 else: alt_seqs.append('')
-                alt_seqs.append(None) # dummy added for ref, to keep the length of alt_seqs as 2
                 allele_range = ','.join(allele_range.split(',')[::-1]) # reverse the allele range to keep the order consistent with GT
                 MA = ','.join(meth_prob[::-1]) # reverse the meth_prob to keep the order consistent with GT
                 MR = ','.join(meth_reads[::-1])
