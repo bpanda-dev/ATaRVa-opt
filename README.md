@@ -1,5 +1,5 @@
 # ATaRVa - a tandem repeat genotyper
-![Badge-PyPI](https://img.shields.io/badge/PyPI-v0.6.0-brightgreen)
+![Badge-PyPI](https://img.shields.io/badge/PyPI-v0.7.0-brightgreen)
 ![Badge-License](https://img.shields.io/badge/License-MIT-blue)
 
 <p align=center>
@@ -119,7 +119,7 @@ usage: atarva genotype  [-h] -f <FILE> -b <FILE> [<FILE> ...] -r <FILE> [--forma
                         [--snp-dist <INT>] [--snp-count <INT>] [--snp-qual <INT>] [--flank <INT>]
                         [--snp-read <FLOAT>] [--meth-prob <FLOAT>] [--phasing-read <FLOAT>] [-o <FILE>]
                         [--karyotype KARYOTYPE [KARYOTYPE ...]] [-t <INT>] [--haplotag <STR>]
-                        [--decompose] [--amplicon] [--read-wise] [--loci-wise] [-log] [-v]
+                        [--decompose] [--amplicon] [--somatic] [--read-wise] [--loci-wise] [-log] [-v]
 
 Required arguments:
   -f <FILE>, --fasta <FILE>
@@ -167,6 +167,7 @@ Optional arguments:
                         purpose. [default: False]
   --amplicon            genotype mode for targeted-sequenced samples.
                         In this mode, the default values for `max-reads` and `flank` values are 1000 and 20 respectively [default: False]
+  --somatic             genotype mode for capturing mosaicism in samples. In this mode, default `max-reads` and `flank` values are same as amplicon mode. [default: False]
   --read-wise           Read-wise genotyping mode for BED file with dense regions. [default: False]
   --loci-wise           Loci-wise genotyping mode instead of Read-wise for BED file with sparse regions. [default: False]
   -log, --debug_mode    write the debug messages to log file. [default: False]
@@ -316,6 +317,15 @@ VisuaMiTRa allows users to compare motif structure and methylation levels within
 </div>
 
 ## Changelog
+### v0.7.0
+* Replaced K-means clustering in `--amplicon` mode and non-SNP regions with KDE-based clustering and edit-distance–based HDBSCAN.
+* Forced all loci into `haplotyping` mode to ensure clustering is performed, even when most reads support a single allele.
+* Added `LPM` tag in the VCF_SAMPLE column to report longest pure repeat motif and its copy number.
+* Updated ALT allele assignment to prioritize sequence comparison against the reference sequence instead of relying solely on allele length.
+* Improved consensus sequence generation by modifying sequence ordering:
+  * WGS mode now orders sequences based on the mode of allele lengths.
+  * `--amplicon` mode orders sequences alternately from both sides of the median allele length.
+
 ### v0.6.0
 * Fixed an incorrect code modification that caused `--amplicon` mode to produce incorrect results in previous version(V0.5.0)
 * Fixed bugs in `loci-wise` mode related to storing SNP info
@@ -382,6 +392,6 @@ For queries or suggestions, please contact:
 
 Divya Tej Sowpati - tej at csirccmb dot org
 
-Abishek Kumar S - abishekks at csirccmb dot org
+Abishek Kumar S - abishekks at csirccmb dot org 
 
 Akshay Kumar Avvaru - avvaruakshay at gmail dot com

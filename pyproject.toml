@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ATaRVa"
-version = "0.6.0"
+version = "0.7.0"
 description = "Analysis of Tandem Repeats Variations"
 readme = "README.md"
 license = "MIT"
@@ -16,7 +16,8 @@ maintainers = [
   {name = "Abishek Kumar", email = "abishekks@csirccmb.org"}
 ]
 
-keywords = ["tandem repeats", "repeats", "long reads", "ONT", "PacBio", "satellites", "vntr", "tr", "microsatellites", "macrosatellites", "str"]
+keywords = ["tandem repeats", "repeats", "long reads", "ONT", "PacBio", "satellites", "vntr", "tr", "microsatellites", "macrosatellites", "str", "imperfect repeats", "complex repeats", "nested repeats", "haplotyping",
+            "targeted sequencing", "amplicon", "mosaicism", "somatic instability", "motif-analysis", "motif copy", "methylation level", "methylation pattern", "5mC", "modified bases", "motif decomposition", "repeat interruption"]
 dependencies = [
     'numpy>=1.26.4',
     'pyabpoa>=1.5.3',
@@ -28,7 +29,8 @@ dependencies = [
     'bitarray>=3.0.0',
     'regex>=2025.9.1',
     'hdbscan>=0.8.40',
-    'polars>=1.31.0'
+    'polars>=1.31.0',
+    'stringzilla==3.10.9'
 ]
 classifiers = [
     'Development Status :: 4 - Beta',

@@ -16,9 +16,14 @@ encode64_dict = {0: 'A', 1: 'B', 2: 'C', 3: 'D', 4: 'E', 5: 'F', 6: 'G', 7: 'H',
                 23: 'X', 24: 'Y', 25: 'Z', 26: 'a', 27: 'b', 28: 'c', 29: 'd', 30: 'e', 31: 'f', 32: 'g', 33: 'h', 34: 'i', 35: 'j', 36: 'k', 37: 'l', 38: 'm', 39: 'n', 40: 'o', 41: 'p', 42: 'q', 43: 'r', 44: 's',
                 45: 't', 46: 'u', 47: 'v', 48: 'w', 49: 'x', 50: 'y', 51: 'z', 52: '0', 53: '1', 54: '2', 55: '3', 56: '4', 57: '5', 58: '6', 59: '7', 60: '8', 61: '9',62: '+', 63: '/', 64: '/'}
 
-def dbscan(data, hap_reads):
-    data = np.array(data).reshape(-1, 1)
-    min_samples = max(10, round(0.2*len(data))) # min 20% of the data or 10 reads
+def dbscan(data, hap_reads, min_cluster_percent = 0.2):
+    
+    if min_cluster_percent == 0.1:
+        data = np.array(data) # input is in 2d for wgs mode, in amplicon mode it is in 1d
+        min_samples = max(2, round(min_cluster_percent*len(data))) # min 10% of the data or 3 reads for wgs mode
+    else:
+        data = np.array(data).reshape(-1, 1)
+        min_samples = max(10, round(min_cluster_percent*len(data))) # min 20% of the data or 10 reads for amplicon mode
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=FutureWarning)
         clusterer = hdbscan.HDBSCAN(min_cluster_size=min_samples)
@@ -45,6 +50,15 @@ def dbscan(data, hap_reads):
                 main_clusters[len(c_label)] = [c_label, alen]
             
         top2_clus_idx = [v for _,v in sorted(main_clusters.items(), reverse=True)[:2]] # getting top 2 cluster with more support
+
+        if min_cluster_percent == 0.1: # for wgs mode not for amplicon
+            wgs_labels = [-1]*len(cluster_labels)
+            for idx in range(len(cluster_labels)):
+                if idx in top2_clus_idx[0][0]:
+                    wgs_labels[idx] = 0
+                elif idx in top2_clus_idx[1][0]:
+                    wgs_labels[idx] = 1
+            return [True, wgs_labels, None]
 
         new_haplotypes = [[hap_reads[idx] for idx in top2_clus_idx[0][0]], [hap_reads[idx] for idx in top2_clus_idx[1][0]]] # getting respective read ids
 
@@ -108,7 +122,7 @@ def confidence_interval(data):
 def alt_sequence(read_seqs, hap_reads, amplicon, motif_size):
     seqs = [seq for seq in [read_seqs[read_id][0] for read_id in hap_reads] if seq!='']
     if len(seqs)>0:
-        ALT = consensus_seq_poa(seqs)
+        ALT = consensus_seq_poa(seqs, amplicon)
         allele_length = len(ALT)
     else:
         ALT = '<DEL>'
@@ -119,8 +133,11 @@ def alt_sequence(read_seqs, hap_reads, amplicon, motif_size):
     if amplicon and allele_length and (motif_size<=10):
         decomp_seq, nonrep_percent = motif_decomposition(ALT, motif_size)
         
-        if nonrep_percent > 0.30: # if more than 30% of the sequence is non-repeat, repeativity = False
+        if (len(ALT) > 50) and (nonrep_percent > 0.30): # if more than 30% of the sequence is non-repeat, repeativity = False
             repeativity = False
+        elif (len(ALT) <= 50) and (nonrep_percent > 0.40):
+            repeativity = False
+
     return [ALT, allele_length, decomp_seq, repeativity]
 
 def pos_diffs(pos_list):
@@ -221,3 +238,45 @@ def methylation_encoding(matrix, pos_matrix, ALT_seq):
             col_mean= round(col_mean/1.5625) # scaling to 0-64
             encryted_meth += encode64_dict[col_mean]
     return encryted_meth
+
+def longest_pure_repeat(dseq, MOTIF):
+    dseq = dseq.split('-')
+    motif_order = []
+    copies_order = []
+    length_order = []
+    for i in dseq:
+        if '(' in i:
+            end_idx = i.index(')')
+            tmp_motif = i[1:end_idx]
+            motif_order.append(tmp_motif)
+            copy = int(i[end_idx+1:])
+            copies_order.append(copy)
+            length_order.append(copy * len(tmp_motif))
+    if length_order!=[]: # the sequence has atleast one decomposed motif
+        lps_length = max(length_order)
+    else: # the sequence doesnt have enough repeatitions to get decomposed
+        cont_repeat_len = [len(i)//len(MOTIF) for i in re.findall(f"(?:{MOTIF})+", dseq[0])]
+        lps_count = max(cont_repeat_len) if cont_repeat_len!=[] else 0
+        return f'{MOTIF}-{lps_count}'
+    # for multiple longer repeat motifs
+    if length_order.count(lps_length) > 1:
+        maxies_idx = [i for i,k in enumerate(length_order) if k == lps_length] # index of all max length motifs
+        for each_idx in maxies_idx:
+            current_motif = motif_order[each_idx]
+            n = len(current_motif)
+            if MOTIF in [current_motif[i:] + current_motif[:i] for i in range(n)]: # checking the presence of bed motif in cyclic variations
+                lps_motif = MOTIF
+                lps_count = str(copies_order[each_idx])
+                return '-'.join([lps_motif, lps_count])
+    
+    lps_length_idx = length_order.index(lps_length)
+    lps_motif = motif_order[lps_length_idx]
+    lps_count = str(copies_order[lps_length_idx])
+    n = len(lps_motif)
+    if lps_motif == MOTIF:
+        pass
+    elif MOTIF in [lps_motif[i:] + lps_motif[:i] for i in range(n)]:
+        lps_motif = MOTIF
+    else:
+        pass
+    return '-'.join([lps_motif, lps_count])

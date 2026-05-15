@@ -6,39 +6,13 @@ from ATARVA.genotype_utils import analyse_genotype
 from ATARVA.vcf_writer import *
 from ATARVA.consensus import consensus_seq_poa
 from ATARVA.sub_operation_utils import *
-from ATARVA.sub_operation_utils import *
+from ATARVA.realignment_utils import suppress_stderr, restore_stderr
 
 from tqdm import tqdm
 import pysam
 import numpy as np
-import numpy as np
 import logging
 import os
-
-class PysamWarningCapture:
-    """
-    Context manager to capture pysam/htslib C-level stderr warnings
-    and redirect them to a log file.
-    """
-
-    def __init__(self, logfile=None):
-        self.logfile    = logfile
-        self.log_fd     = None
-        self.old_stderr = None
-
-    def __enter__(self):
-        if self.logfile is None:
-            self.logfile = os.devnull
-        self.log_fd     = open(self.logfile, 'a')
-        self.old_stderr = os.dup(2)                    # save original stderr fd
-        os.dup2(self.log_fd.fileno(), 2)               # redirect fd 2 → log file
-        return self
-
-    def __exit__(self, *args):
-        sys.stderr.flush()
-        os.dup2(self.old_stderr, 2)                    # restore original stderr
-        os.close(self.old_stderr)
-        self.log_fd.close()
 
 def locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, global_read_variations, global_snp_positions, prev_reads, sorted_global_snp_list, maxR, minR, ref, Chrom, global_loci_info, out, snpQ, snpC, snpD, snpR, phasingR, tbx, flank, sorted_global_ins_rpos_set, log_bool, logger, male, prev_locus_end, decomp, hp_code, amplicon, somatic, meth_cutoff):
     genotyped_loci = 0
@@ -66,7 +40,7 @@ def locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, 
             if homozygous_allele != ref_allele_length:
                 seqs = [seq for seq in [read_seqs[read_id][0] for read_id in reads_of_homozygous] if seq!='']
                 if len(seqs)>0:
-                    ALT = consensus_seq_poa(seqs)
+                    ALT = consensus_seq_poa(seqs, False)
                     homozygous_allele = len(ALT)
                 else:
                     ALT = '<DEL>'
@@ -101,7 +75,7 @@ def locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, 
                 tqdm.write(skip_messages.get(skip_point, 'Locus skipped due to less number of significant snps based on user\'s parameter.'))
         elif category == 3:
             genotypes = []
-            allele_count = {}
+            allele_count = []
             ALT_seqs = []
             phased_read = []
             alen_list = []
@@ -111,7 +85,7 @@ def locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, 
                 seqs = [seq for seq in [read_seqs[read_id][0] for read_id in hap_reads] if seq!='']
                 alen_list.append([len(read_seqs[read_id][0]) for read_id in hap_reads])
                 if len(seqs)>0:
-                    ALT = consensus_seq_poa(seqs)
+                    ALT = consensus_seq_poa(seqs, False)
                     allele_length = len(ALT)
                 else:
                     ALT = '<DEL>'
@@ -119,11 +93,7 @@ def locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, 
 
                 ALT_seqs.append(ALT)
                 genotypes.append(allele_length)
-
-                if allele_length not in allele_count:
-                    allele_count[allele_length] = len(hap_reads)
-                else:
-                    allele_count[str(allele_length)] = len(hap_reads)
+                allele_count.append(len(hap_reads))
 
                 meth_info.append(methylation_calc(hap_reads, global_loci_variations, locus_key, ALT))
 
@@ -159,10 +129,9 @@ def cooper(bam_file, tbx_file, ref_file, aln_format, contigs, mapq_threshold, ou
         out_filename = f'{hid_outfile}_thread_{tidx}.vcf'
         log_name = f'{hid_outfile}_debug_{tidx}.log'
     
-    with PysamWarningCapture():
-        tbx  = pysam.Tabixfile(tbx_file)
-        bam  = pysam.AlignmentFile(bam_file, aln_format)
-        ref  = pysam.FastaFile(ref_file)
+    tbx  = pysam.Tabixfile(tbx_file)
+    bam  = pysam.AlignmentFile(bam_file, aln_format)
+    ref  = pysam.FastaFile(ref_file)
     
     # Open the output file
     out = open(out_filename, 'w')
@@ -172,7 +141,6 @@ def cooper(bam_file, tbx_file, ref_file, aln_format, contigs, mapq_threshold, ou
         vcf_writer(out, bam, bam_file.split("/")[-1].split('.')[0])
     
     # Initialize the logger if log_bool is True
-    pysamwarn_log = None
     if log_bool:
         with open(log_name, 'w'):
             pass
@@ -182,7 +150,6 @@ def cooper(bam_file, tbx_file, ref_file, aln_format, contigs, mapq_threshold, ou
             format='%(levelname)s - %(message)s'
         )
         logger = logging.getLogger("MyLogger")
-        pysamwarn_log = logger
 
     if amplicon: hp_code = None
     
@@ -232,256 +199,265 @@ def cooper(bam_file, tbx_file, ref_file, aln_format, contigs, mapq_threshold, ou
 
         read_index = 0
 
-        with PysamWarningCapture(pysamwarn_log):
-            for read in bam.fetch(Chrom, Start[0], End[1]):
-            
+        for read in bam.fetch(Chrom, Start[0], End[1]):
+        
 
-                # skip read with low mapping quality
-                if read.mapping_quality < mapq_threshold:
-                    continue
+            # skip read with low mapping quality
+            if read.mapping_quality < mapq_threshold:
+                continue
 
-                read_chrom = read.reference_name
-                read_start = read.reference_start
-                read_end   = read.reference_end
-                if amplicon:
-                    qpos_start = read.query_alignment_start # query alignment start pos
-                    qpos_end = read.query_alignment_end # query alignment end pos
+            read_chrom = read.reference_name
+            read_start = read.reference_start
+            read_end   = read.reference_end
+            if amplicon:
+                qpos_start = read.query_alignment_start # query alignment start pos
+                qpos_end = read.query_alignment_end # query alignment end pos
+            else:
+                qpos_start = 0; qpos_end = 0
+
+            while global_loci_ends and read_start > global_loci_ends[0]:
+
+                genotype_status = locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, global_read_variations, global_snp_positions, prev_reads, sorted_global_snp_list, maxR, minR, ref, Chrom, global_loci_info, out, snpQ, snpC, snpD, snpR, phasingR, tbx, flank, sorted_global_ins_rpos_set, log_bool, logger, male, prev_locus_end, decomp, hp_code, amplicon, somatic, meth_cutoff)
+                genotyped_loci_count += genotype_status[0]
+                prev_locus_end = genotype_status[1]
+                progress_bar.update(1)
+                
+
+            while global_read_ends and read_start > global_read_ends[0]:
+                # if the read is beyond the end of the first read that was tracked
+                if global_loci_ends and global_read_ends[0] > global_loci_ends[0]:
+                    # if the initial read useful for the first locus being tracked then it is retained
+                    break
                 else:
-                    qpos_start = 0; qpos_end = 0
 
-                while global_loci_ends and read_start > global_loci_ends[0]:
+                    # remove the read information if the current read is beyond the first read and the locus
+                    popped = global_read_ends.pop(0)
+                    rindex = global_read_indices.pop(0)
+                    if rindex in global_read_variations:
+                        for pos in global_read_variations[rindex]['snps']:
+                            if pos in global_snp_positions:
+                                global_snp_positions[pos]['cov'] -= 1
+                                
+                        del_snps = [pos for pos in global_snp_positions if global_snp_positions[pos]['cov'] == 0]
+                        for snp in del_snps:
+                            del global_snp_positions[snp]
+                            sorted_global_snp_list.remove(snp)
+                        del global_read_variations[rindex]
+                        del del_snps
 
+                        if rindex in prev_reads: prev_reads.remove(rindex)
+                            
+                    del_ins_pos_idx = 0
+                    list_rpos = sorted(sorted_global_ins_rpos_set)
+                    for i in list_rpos:
+                        del_ins_pos_idx+=1
+                        if i > popped: break
+                    del list_rpos[:del_ins_pos_idx]
+                    sorted_global_ins_rpos_set = set(list_rpos)
+                    
+
+
+            # if the read is beyond the last locus in the bed file the loop stops
+            if read_start > end_coord:
+                while global_loci_ends:
                     genotype_status = locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, global_read_variations, global_snp_positions, prev_reads, sorted_global_snp_list, maxR, minR, ref, Chrom, global_loci_info, out, snpQ, snpC, snpD, snpR, phasingR, tbx, flank, sorted_global_ins_rpos_set, log_bool, logger, male, prev_locus_end, decomp, hp_code, amplicon, somatic, meth_cutoff)
                     genotyped_loci_count += genotype_status[0]
                     prev_locus_end = genotype_status[1]
                     progress_bar.update(1)
-                    
+                # process the loci left in global_loci_variation
+                break
 
-                while global_read_ends and read_start > global_read_ends[0]:
-                    # if the read is beyond the end of the first read that was tracked
-                    if global_loci_ends and global_read_ends[0] > global_loci_ends[0]:
-                        # if the initial read useful for the first locus being tracked then it is retained
-                        break
+            # information locally saved for each read and all the loci it covers
+            read_loci_variations = {}
+            # set of homopolymer positions within the reference part that is covered by the read
+            homopoly_positions = {}
+
+            # repeat loci covered by the read
+            loci_coords = []; loci_keys = []
+            left_flank_list = []; right_flank_list = []
+            amp_left_flank_list = []; amp_right_flank_list = []
+            same_read_loci = [] # Loci covered by the same read
+
+            for row in tbx.fetch(read_chrom, read_start, read_end):
+                
+                # adjust read start and end based on soft and hard clippings
+                # soft and hard clippings do not consume the reference bases
+
+                row = row.split('\t')
+                locus_start = int(row[1]);  locus_end = int(row[2]); locus_len = locus_end-locus_start
+
+                same_read_loci.append((locus_start, locus_end))
+
+                if (locus_start>=Start[0]) and (locus_end<=End[1]):
+                    if locus_start==Start[0]:
+                        if locus_end==Start[1]: pass
+                        else: continue
+                    pass
+                elif locus_start<Start[0]:
+                    continue
+                elif locus_start>=End[0]: break
+                
+
+                passed_loci = False # if the loci passed in normal or amplicon mode, then write it in global variables
+
+                # if only the read completely covers the repeat
+                if ( locus_start >= read_start ) & ( locus_end <= read_end ):
+                    passed_loci = True
+                    left_flank = min(flank, locus_start - read_start)
+                    right_flank = min(flank, read_end - locus_end)
+                    left_flank_list.append(left_flank)
+                    right_flank_list.append(right_flank)
+
+                    loci_coords.append((locus_start - left_flank, locus_end + right_flank))
+
+
+                elif amplicon:
+                    enough_soft_flank = True # Add the locus_key if this is True
+
+                    # for upstream soft_clip, checking the length compared to flank length
+                    if locus_start < read_start:
+                        mod_locus_start = read_start
+                        if qpos_start >= flank: # SUS! what if the soft_clip has less num of bp than flank? and covered the repeat completely?
+                            left_flank = 0
+                        else:
+                            enough_soft_flank = False
+                            left_flank = None
                     else:
-
-                        # remove the read information if the current read is beyond the first read and the locus
-                        popped = global_read_ends.pop(0)
-                        rindex = global_read_indices.pop(0)
-                        if rindex in global_read_variations:
-                            for pos in global_read_variations[rindex]['snps']:
-                                if pos in global_snp_positions:
-                                    global_snp_positions[pos]['cov'] -= 1
-                                    
-                            del_snps = [pos for pos in global_snp_positions if global_snp_positions[pos]['cov'] == 0]
-                            for snp in del_snps:
-                                del global_snp_positions[snp]
-                                sorted_global_snp_list.remove(snp)
-                            del global_read_variations[rindex]
-                            del del_snps
-
-                            if rindex in prev_reads: prev_reads.remove(rindex)
-                                
-                        del_ins_pos_idx = 0
-                        list_rpos = sorted(sorted_global_ins_rpos_set)
-                        for i in list_rpos:
-                            del_ins_pos_idx+=1
-                            if i > popped: break
-                        del list_rpos[:del_ins_pos_idx]
-                        sorted_global_ins_rpos_set = set(list_rpos)
-                        
-
-
-                # if the read is beyond the last locus in the bed file the loop stops
-                if read_start > end_coord:
-                    while global_loci_ends:
-                        genotype_status = locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, global_read_variations, global_snp_positions, prev_reads, sorted_global_snp_list, maxR, minR, ref, Chrom, global_loci_info, out, snpQ, snpC, snpD, snpR, phasingR, tbx, flank, sorted_global_ins_rpos_set, log_bool, logger, male, prev_locus_end, decomp, hp_code, amplicon, somatic, meth_cutoff)
-                        genotyped_loci_count += genotype_status[0]
-                        prev_locus_end = genotype_status[1]
-                        progress_bar.update(1)
-                    # process the loci left in global_loci_variation
-                    break
-
-                # information locally saved for each read and all the loci it covers
-                read_loci_variations = {}
-                # set of homopolymer positions within the reference part that is covered by the read
-                homopoly_positions = {}
-
-                # repeat loci covered by the read
-                loci_coords = []; loci_keys = []
-                left_flank_list = []; right_flank_list = []
-                amp_left_flank_list = []; amp_right_flank_list = []
-                same_read_loci = [] # Loci covered by the same read
-
-                for row in tbx.fetch(read_chrom, read_start, read_end):
-                    
-                    # adjust read start and end based on soft and hard clippings
-                    # soft and hard clippings do not consume the reference bases
-
-                    row = row.split('\t')
-                    locus_start = int(row[1]);  locus_end = int(row[2]); locus_len = locus_end-locus_start
-
-                    same_read_loci.append((locus_start, locus_end))
-
-                    if (locus_start>=Start[0]) and (locus_end<=End[1]):
-                        if locus_start==Start[0]:
-                            if locus_end==Start[1]: pass
-                            else: continue
-                        pass
-                    elif locus_start<Start[0]:
-                        continue
-                    elif locus_start>=End[0]: break
-                    
-
-                    passed_loci = False # if the loci passed in normal or amplicon mode, then write it in global variables
-
-                    # if only the read completely covers the repeat
-                    if ( locus_start >= read_start ) & ( locus_end <= read_end ):
-                        passed_loci = True
+                        mod_locus_start = locus_start
                         left_flank = min(flank, locus_start - read_start)
-                        right_flank = min(flank, read_end - locus_end)
+                    if left_flank!=None:
                         left_flank_list.append(left_flank)
+
+                    # for downstream soft_clip, checking the length compared to flank length
+                    seq_len = read.query_length
+                    if locus_end > read_end:
+                        mod_locus_end = read_end
+                        if (seq_len-qpos_end) >= flank: # SUS! what if the soft_clip has less num of bp than flank? and covered the repeat completely?
+                            right_flank = 0
+                        else:
+                            enough_soft_flank = False
+                            right_flank = None
+                    else:
+                        mod_locus_end = locus_end
+                        right_flank = min(flank, read_end - locus_end)
+                    if right_flank!=None:
                         right_flank_list.append(right_flank)
 
-                        loci_coords.append((locus_start - left_flank, locus_end + right_flank))
+                    if enough_soft_flank:
+                        passed_loci = True
+                        # if the read covers the repeat completely with soft-clipping, possibly
+                        loci_coords.append((mod_locus_start - left_flank, mod_locus_end + right_flank))
+
+                if passed_loci:
+                    locus_key = f'{read_chrom}:{locus_start}-{locus_end}'
+                    loci_keys.append(locus_key)
+                    read_loci_variations[locus_key] = {'halen': locus_len, 'alen': locus_len, 'rlen': locus_len, 'seq': []}
+
+                    if locus_key not in global_loci_variations:
+                        global_loci_variations[locus_key] = {'rlen': locus_len, 'reads': [], 'read_allele': {}, 'read_sequence': {}, 'read_tag':[], 'read_meth': {}}
+                        global_loci_info[locus_key] = row
+
+                        # adding the locus key when it is first encountered
+                        global_loci_ends.append(locus_end)
+                        global_loci_keys.append(locus_key)
+
+            # if no repeats are covered by the read
+            if len(loci_coords) == 0: continue
 
 
-                    elif amplicon:
-                        enough_soft_flank = True # Add the locus_key if this is True
+            read_index += 1
+            read_quality = read.query_qualities
+            cigar_tuples = read.cigartuples
+            read_sequence = read.query_sequence
+            mean_base_qual = int(np.mean(read_quality)) if read_quality else 0
 
-                        # for upstream soft_clip, checking the length compared to flank length
-                        if locus_start < read_start:
-                            mod_locus_start = read_start
-                            if qpos_start >= flank: # SUS! what if the soft_clip has less num of bp than flank? and covered the repeat completely?
-                                left_flank = 0
-                            else:
-                                enough_soft_flank = False
-                                left_flank = None
-                        else:
-                            mod_locus_start = locus_start
-                            left_flank = min(flank, locus_start - read_start)
-                        if left_flank!=None:
-                            left_flank_list.append(left_flank)
+            tmp_qpos = 0
+            for cigar in cigar_tuples:
+                if (cigar[0] == 0) or (cigar[0] == 7):
+                    tmp_seq = read_sequence[tmp_qpos :tmp_qpos + cigar[1]] 
+                    break
+                elif (cigar[0] == 1) or (cigar[0] == 4) or (cigar[0] == 8): tmp_qpos += cigar[1] 
+                
+            if '=' in tmp_seq:
+                read_sequence = convert_eqx_read(read_chrom, read_start, cigar_tuples, read_sequence, ref)
 
-                        # for downstream soft_clip, checking the length compared to flank length
-                        seq_len = read.query_length
-                        if locus_end > read_end:
-                            mod_locus_end = read_end
-                            if (seq_len-qpos_end) >= flank: # SUS! what if the soft_clip has less num of bp than flank? and covered the repeat completely?
-                                right_flank = 0
-                            else:
-                                enough_soft_flank = False
-                                right_flank = None
-                        else:
-                            mod_locus_end = locus_end
-                            right_flank = min(flank, read_end - locus_end)
-                        if right_flank!=None:
-                            right_flank_list.append(right_flank)
+            cigar_one = cigar_tuples[0]
 
-                        if enough_soft_flank:
-                            passed_loci = True
-                            # if the read covers the repeat completely with soft-clipping, possibly
-                            loci_coords.append((mod_locus_start - left_flank, mod_locus_end + right_flank))
-
-                    if passed_loci:
-                        locus_key = f'{read_chrom}:{locus_start}-{locus_end}'
-                        loci_keys.append(locus_key)
-                        read_loci_variations[locus_key] = {'halen': locus_len, 'alen': locus_len, 'rlen': locus_len, 'seq': []}
-
-                        if locus_key not in global_loci_variations:
-                            global_loci_variations[locus_key] = {'rlen': locus_len, 'reads': [], 'read_allele': {}, 'read_sequence': {}, 'read_tag':[], 'read_meth': {}}
-                            global_loci_info[locus_key] = row
-
-                            # adding the locus key when it is first encountered
-                            global_loci_ends.append(locus_end)
-                            global_loci_keys.append(locus_key)
-
-                # if no repeats are covered by the read
-                if len(loci_coords) == 0: continue
+            global_read_ends.append(read_end)
+            global_read_indices.append(read_index)
+            global_read_variations[read_index] = {'s': read_start, 'e': read_end, 'snps': set(), 'dels': [], 'meth': [], 'q': mean_base_qual}
 
 
-                read_index += 1
-                read_quality = read.query_qualities
-                cigar_tuples = read.cigartuples
-                read_sequence = read.query_sequence
-                mean_base_qual = int(np.mean(read_quality)) if read_quality else 0
+            if hp_code: hp = read.has_tag(hp_code)
+            else: hp = False
+            if hp: hp_tag = read.get_tag(hp_code)
+            else: hp_tag = None
 
-                tmp_qpos = 0
-                for cigar in cigar_tuples:
-                    if (cigar[0] == 0) or (cigar[0] == 7):
-                        tmp_seq = read_sequence[tmp_qpos :tmp_qpos + cigar[1]] 
-                        break
-                    elif (cigar[0] == 1) or (cigar[0] == 4) or (cigar[0] == 8): tmp_qpos += cigar[1] 
-                    
-                if '=' in tmp_seq:
-                    read_sequence = convert_eqx_read(read_chrom, read_start, cigar_tuples, read_sequence, ref)
+            init_amp_var = [amp_right_flank_list, amp_left_flank_list, read_chrom, flank, qpos_start, qpos_end]
+            if amplicon:
+                hp = True
+                for each_flank in left_flank_list:
+                    needed_len = flank - each_flank
+                    amp_left_flank_list.append(needed_len if each_flank < flank else 0)
+                for each_flank in right_flank_list:
+                    needed_len = flank - each_flank
+                    amp_right_flank_list.append(needed_len if each_flank < flank else 0)
 
-                cigar_one = cigar_tuples[0]
+                
+            if read.has_tag('cs'):
+                del cigar_tuples
+                cs_tag = read.get_tag('cs')
+                if amp_left_flank_list: # this chunk not needed for cigar_parse, as it already has ref object
+                    init_amp_var.append(ref) # add ref object only if its amplicon mode
+                else:
+                    init_amp_var.append(0)
+                meth_start, meth_end = parse_cstag(read_index, cs_tag, read_start, loci_keys, loci_coords, read_loci_variations, homopoly_positions, global_read_variations, global_snp_positions, read_sequence, read_quality, cigar_one, sorted_global_snp_list, left_flank_list, right_flank_list, male, hp, init_amp_var, same_read_loci, snpQ)
+                
+                original_stderr = os.dup(sys.stderr.fileno())
+                suppress_stderr()
+                read_modified_bases = list(read.modified_bases.items()) if read.modified_bases is not None else []
+                restore_stderr(original_stderr)
 
-                global_read_ends.append(read_end)
-                global_read_indices.append(read_index)
-                global_read_variations[read_index] = {'s': read_start, 'e': read_end, 'snps': set(), 'dels': [], 'meth': [], 'q': mean_base_qual}
+                if len(read_modified_bases)>0:
+                    for mods in read_modified_bases:
+                        if (mods[0][0]=='C') and (mods[0][2]=='m'):
+                            read_meth_range = mm_tag_extract(mods[1], meth_start, meth_end, read_sequence, meth_cutoff, not(mods[0][1])) # last arg is bool value for strand state; forward = True, reverse = False
+                            global_read_variations[read_index]['meth'] = read_meth_range
+                            break
 
+                del read_modified_bases
+                del read_sequence
+                del read_quality
+            else :
+                meth_start, meth_end = parse_cigar_tag(read_index, cigar_tuples, read_start, loci_keys, loci_coords, read_loci_variations,
+                                homopoly_positions, global_read_variations, global_snp_positions, read_sequence, read, ref, read_quality, sorted_global_snp_list, left_flank_list, right_flank_list, male, hp, init_amp_var, same_read_loci, snpQ)
+                
+                original_stderr = os.dup(sys.stderr.fileno())
+                suppress_stderr()
+                read_modified_bases = list(read.modified_bases.items()) if read.modified_bases is not None else []
+                restore_stderr(original_stderr)
+                
+                if len(read_modified_bases)>0:
+                    for mods in read_modified_bases:
+                        if (mods[0][0]=='C') and (mods[0][2]=='m'):
+                            read_meth_range = mm_tag_extract(mods[1], meth_start, meth_end, read_sequence, meth_cutoff, not(mods[0][1])) # last arg is bool value for strand state; forward = True, reverse = False
+                            global_read_variations[read_index]['meth'] = read_meth_range
+                            break
 
-                if hp_code: hp = read.has_tag(hp_code)
-                else: hp = False
-                if hp: hp_tag = read.get_tag(hp_code)
-                else: hp_tag = None
+                del read_modified_bases
+                del read_sequence
+                del read_quality
 
-                init_amp_var = [amp_right_flank_list, amp_left_flank_list, read_chrom, flank, qpos_start, qpos_end]
+            for locus_key in read_loci_variations:
+
                 if amplicon:
-                    hp = True
-                    for each_flank in left_flank_list:
-                        needed_len = flank - each_flank
-                        amp_left_flank_list.append(needed_len if each_flank < flank else 0)
-                    for each_flank in right_flank_list:
-                        needed_len = flank - each_flank
-                        amp_right_flank_list.append(needed_len if each_flank < flank else 0)
+                    if not read_loci_variations[locus_key]['seq']:
+                        continue
 
-                    
-                if read.has_tag('cs'):
-                    del cigar_tuples
-                    cs_tag = read.get_tag('cs')
-                    if amp_left_flank_list: # this chunk not needed for cigar_parse, as it already has ref object
-                        init_amp_var.append(ref) # add ref object only if its amplicon mode
-                    else:
-                        init_amp_var.append(0)
-                    meth_start, meth_end = parse_cstag(read_index, cs_tag, read_start, loci_keys, loci_coords, read_loci_variations, homopoly_positions, global_read_variations, global_snp_positions, read_sequence, read_quality, cigar_one, sorted_global_snp_list, left_flank_list, right_flank_list, male, hp, init_amp_var, same_read_loci, snpQ)
-                    read_modified_bases = list(read.modified_bases.items()) if read.modified_bases is not None else []
-                    if len(read_modified_bases)>0:
-                        for mods in read_modified_bases:
-                            if (mods[0][0]=='C') and (mods[0][2]=='m'):
-                                read_meth_range = mm_tag_extract(mods[1], meth_start, meth_end, read_sequence, meth_cutoff, not(mods[0][1])) # last arg is bool value for strand state; forward = True, reverse = False
-                                global_read_variations[read_index]['meth'] = read_meth_range
-                                break
-
-                    del read_modified_bases
-                    del read_sequence
-                    del read_quality
-                else :
-                    meth_start, meth_end = parse_cigar_tag(read_index, cigar_tuples, read_start, loci_keys, loci_coords, read_loci_variations,
-                                    homopoly_positions, global_read_variations, global_snp_positions, read_sequence, read, ref, read_quality, sorted_global_snp_list, left_flank_list, right_flank_list, male, hp, init_amp_var, same_read_loci, snpQ)
-                    read_modified_bases = list(read.modified_bases.items()) if read.modified_bases is not None else []
-                    if len(read_modified_bases)>0:
-                        for mods in read_modified_bases:
-                            if (mods[0][0]=='C') and (mods[0][2]=='m'):
-                                read_meth_range = mm_tag_extract(mods[1], meth_start, meth_end, read_sequence, meth_cutoff, not(mods[0][1])) # last arg is bool value for strand state; forward = True, reverse = False
-                                global_read_variations[read_index]['meth'] = read_meth_range
-                                break
-
-                    del read_modified_bases
-                    del read_sequence
-                    del read_quality
-
-                for locus_key in read_loci_variations:
-
-                    if amplicon:
-                        if not read_loci_variations[locus_key]['seq']:
-                            continue
-
-                    global_loci_variations[locus_key]['reads'].append(read_index)
-                    global_loci_variations[locus_key]['read_allele'][read_index] = [read_loci_variations[locus_key]['halen'], read_loci_variations[locus_key]['alen']]
-                    global_loci_variations[locus_key]['read_sequence'][read_index] = read_loci_variations[locus_key]['seq']
-                    global_loci_variations[locus_key]['read_tag'].append(hp_tag)
+                global_loci_variations[locus_key]['reads'].append(read_index)
+                global_loci_variations[locus_key]['read_allele'][read_index] = [read_loci_variations[locus_key]['halen'], read_loci_variations[locus_key]['alen']]
+                global_loci_variations[locus_key]['read_sequence'][read_index] = read_loci_variations[locus_key]['seq']
+                global_loci_variations[locus_key]['read_tag'].append(hp_tag)
 
         while global_loci_ends:
             genotype_status = locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, global_read_variations, global_snp_positions, prev_reads, sorted_global_snp_list, maxR, minR, ref, Chrom, global_loci_info, out, snpQ, snpC, snpD, snpR, phasingR, tbx, flank, sorted_global_ins_rpos_set, log_bool, logger, male, prev_locus_end, decomp, hp_code, amplicon, somatic, meth_cutoff)
@@ -534,7 +510,7 @@ def mini_cooper(bam_file, tbx_file, ref_file, aln_format, contigs, mapq_threshol
     # Write the VCF header if tidx is -1 or 0
     if tidx == -1 or tidx == 0:
         vcf_writer(out, bam, bam_file.split("/")[-1].split('.')[0])
-    
+
     # Initialize the logger if log_bool is True
     if log_bool:
         with open(log_name, 'w'):
@@ -607,7 +583,6 @@ def mini_cooper(bam_file, tbx_file, ref_file, aln_format, contigs, mapq_threshol
             sorted_global_snp_list = []
             read_index = 0
             
-           
             for read in bam.fetch(Chrom, int(row[1]), int(row[2])):
                 if read.mapping_quality < mapq_threshold:
                     continue
@@ -628,7 +603,7 @@ def mini_cooper(bam_file, tbx_file, ref_file, aln_format, contigs, mapq_threshol
     
                 # repeat loci covered by the read
                 loci_coords = []; loci_keys = []
- 
+
                 left_flank_list = []; right_flank_list = []
                 amp_left_flank_list = []; amp_right_flank_list = []
 
@@ -753,7 +728,12 @@ def mini_cooper(bam_file, tbx_file, ref_file, aln_format, contigs, mapq_threshol
                     else:
                         init_amp_var.append(0)
                     meth_start, meth_end = parse_cstag(read_index, cs_tag, read_start, loci_keys, loci_coords, read_loci_variations, homopoly_positions, global_read_variations, global_snp_positions, read_sequence, read_quality, cigar_one, sorted_global_snp_list, left_flank_list, right_flank_list, male, hp, init_amp_var, same_read_loci, snpQ)
+                    
+                    original_stderr = os.dup(sys.stderr.fileno())
+                    suppress_stderr()
                     read_modified_bases = list(read.modified_bases.items()) if read.modified_bases is not None else []
+                    restore_stderr(original_stderr)
+
                     if len(read_modified_bases)>0:
                         for mods in read_modified_bases:
                             if (mods[0][0]=='C') and (mods[0][2]=='m'):
@@ -767,7 +747,12 @@ def mini_cooper(bam_file, tbx_file, ref_file, aln_format, contigs, mapq_threshol
                 else :
                     meth_start, meth_end = parse_cigar_tag(read_index, cigar_tuples, read_start, loci_keys, loci_coords, read_loci_variations,
                                 homopoly_positions, global_read_variations, global_snp_positions, read_sequence, read, ref, read_quality, sorted_global_snp_list, left_flank_list, right_flank_list, male, hp, init_amp_var, same_read_loci, snpQ)
+                    
+                    original_stderr = os.dup(sys.stderr.fileno())
+                    suppress_stderr()
                     read_modified_bases = list(read.modified_bases.items()) if read.modified_bases is not None else []
+                    restore_stderr(original_stderr)
+
                     if len(read_modified_bases)>0:
                         for mods in read_modified_bases:
                             if (mods[0][0]=='C') and (mods[0][2]=='m'):
