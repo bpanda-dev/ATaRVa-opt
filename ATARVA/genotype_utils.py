@@ -9,19 +9,19 @@ from scipy.signal import find_peaks
 from scipy.signal import peak_widths
 import stringzilla as sz
    
-def homo_vcf_call(alen, read_seqs, haplotypes, DP, amplicon, motif_size, ref, contig, locus_key, global_loci_info, global_loci_variations, out, log_bool, decomp, hallele_counter):
+def homo_vcf_call(alen, read_seqs, haplotypes, DP, amplicon, motif_size, ref, contig, locus_key, global_loci_info, global_loci_variations, out, log_bool, decomp, hallele_counter, tag):
 
     lower1,upper1 = confidence_interval(alen)
     allele_range = f'{lower1}-{upper1},{lower1}-{upper1}'
     ALT, allele_length, decomp_seq, repeativity = alt_sequence(read_seqs, haplotypes, amplicon, motif_size)
     if repeativity:
         meth_info = methylation_calc(haplotypes, global_loci_variations, locus_key, ALT)
-        vcf_homozygous_writer(ref, contig, locus_key, global_loci_info, allele_length, len(haplotypes), DP, out, ALT, log_bool, 'kmeans', decomp, hallele_counter, False, allele_range, decomp_seq, meth_info)
+        vcf_homozygous_writer(ref, contig, locus_key, global_loci_info, allele_length, len(haplotypes), DP, out, ALT, log_bool, tag, decomp, hallele_counter, False, allele_range, decomp_seq, meth_info)
     else:
         return [False, 6]
     return [True, 10]
 
-def hetero_vcf_call(haplotypes, read_seqs, amplicon, motif_size, new_alen, contig, locus_key, read_indices, global_loci_info, global_loci_variations, locus_start, locus_end, ref, out, log_bool, decomp, hallele_counter):
+def hetero_vcf_call(haplotypes, read_seqs, amplicon, motif_size, new_alen, contig, locus_key, read_indices, global_loci_info, global_loci_variations, locus_start, locus_end, ref, out, log_bool, decomp, hallele_counter, tag):
 
     alen_c1 = new_alen[0]
     alen_c2 = new_alen[1]
@@ -30,7 +30,7 @@ def hetero_vcf_call(haplotypes, read_seqs, amplicon, motif_size, new_alen, conti
     snp_num = '.'        
 
     genotypes = []
-    allele_count = {}
+    allele_count = []
     ALT_seqs = []
     repeativity_list = []
     decomp_seq_list = []
@@ -41,10 +41,11 @@ def hetero_vcf_call(haplotypes, read_seqs, amplicon, motif_size, new_alen, conti
         decomp_seq_list.append(decomp_seq)
         ALT_seqs.append(ALT)
         genotypes.append(allele_length)
-        if allele_length not in allele_count:
-            allele_count[allele_length] = len(hap_reads)
-        else:
-            allele_count[str(allele_length)] = len(hap_reads)
+        allele_count.append(len(hap_reads))
+        # if allele_length not in allele_count:
+        #     allele_count[allele_length] = len(hap_reads)
+        # else:
+        #     allele_count[str(allele_length)] = len(hap_reads)
 
         meth_info.append(methylation_calc(hap_reads, global_loci_variations, locus_key, ALT))
 
@@ -53,7 +54,7 @@ def hetero_vcf_call(haplotypes, read_seqs, amplicon, motif_size, new_alen, conti
     allele_range = f'{lower1}-{upper1},{lower2}-{upper2}'
 
     if all(repeativity_list):
-        vcf_heterozygous_writer(contig, genotypes, locus_start, locus_end, allele_count, len(read_indices), global_loci_info, ref, out, chosen_snpQ, phased_read, snp_num, ALT_seqs, log_bool, 'kmeans', decomp, hallele_counter, allele_range, decomp_seq_list, meth_info)
+        vcf_heterozygous_writer(contig, genotypes, locus_start, locus_end, allele_count, len(read_indices), global_loci_info, ref, out, chosen_snpQ, phased_read, snp_num, ALT_seqs, log_bool, tag, decomp, hallele_counter, allele_range, decomp_seq_list, meth_info)
     elif any(repeativity_list):
         if repeativity_list[0]:
             no_intracluster = True # will be always true in WGS default mode, to run the homozygous part of the code. This is avoid extra if,else conditon if dbscan fails inside amplicon
@@ -61,22 +62,22 @@ def hetero_vcf_call(haplotypes, read_seqs, amplicon, motif_size, new_alen, conti
                 db_status, new_hap, new_alen = dbscan(alen_c1, haplotypes[0])
                 if db_status:
                     no_intracluster = False
-                    bool_state, category = hetero_vcf_call(new_hap, read_seqs, amplicon, motif_size, new_alen, contig, locus_key, read_indices, global_loci_info, global_loci_variations, locus_start, locus_end, ref, out, log_bool, decomp, hallele_counter)
+                    bool_state, category = hetero_vcf_call(new_hap, read_seqs, amplicon, motif_size, new_alen, contig, locus_key, read_indices, global_loci_info, global_loci_variations, locus_start, locus_end, ref, out, log_bool, decomp, hallele_counter, tag)
                     return [bool_state, category]
             if no_intracluster: # if amplicon is true but there are no intraclusters, then give it as homozygous
                 allele_range = f'{lower1}-{upper1},{lower1}-{upper1}'
-                vcf_homozygous_writer(ref, contig, locus_key, global_loci_info, genotypes[0], len(haplotypes[0]), len(read_indices), out, ALT_seqs[0], log_bool, 'kmeans', decomp, hallele_counter, False, allele_range, decomp_seq_list[0], meth_info[0])
+                vcf_homozygous_writer(ref, contig, locus_key, global_loci_info, genotypes[0], len(haplotypes[0]), len(read_indices), out, ALT_seqs[0], log_bool, tag, decomp, hallele_counter, False, allele_range, decomp_seq_list[0], meth_info[0])
         else:
             no_intracluster = True # will be always true in WGS default mode, to run the homozygous part of the code
             if amplicon:
                 db_status, new_hap, new_alen = dbscan(alen_c2, haplotypes[1])
                 if db_status:
                     no_intracluster = False
-                    bool_state, category = hetero_vcf_call(new_hap, read_seqs, amplicon, motif_size, new_alen, contig, locus_key, read_indices, global_loci_info, global_loci_variations, locus_start, locus_end, ref, out, log_bool, decomp, hallele_counter)
+                    bool_state, category = hetero_vcf_call(new_hap, read_seqs, amplicon, motif_size, new_alen, contig, locus_key, read_indices, global_loci_info, global_loci_variations, locus_start, locus_end, ref, out, log_bool, decomp, hallele_counter, tag)
                     return [bool_state, category]
             if no_intracluster: # if amplicon is true but there are no intraclusters, then give it as homozygous
                 allele_range = f'{lower2}-{upper2},{lower2}-{upper2}'
-                vcf_homozygous_writer(ref, contig, locus_key, global_loci_info, genotypes[1], len(haplotypes[1]), len(read_indices), out, ALT_seqs[1], log_bool, 'kmeans', decomp, hallele_counter, False, allele_range, decomp_seq_list[1], meth_info[1])
+                vcf_homozygous_writer(ref, contig, locus_key, global_loci_info, genotypes[1], len(haplotypes[1]), len(read_indices), out, ALT_seqs[1], log_bool, tag, decomp, hallele_counter, False, allele_range, decomp_seq_list[1], meth_info[1])
     else:
         return [False, 6]
     
@@ -147,11 +148,16 @@ def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, 
         return [False, 6]
 
     if amplicon:
+        tag = 'KDE'
         data = np.array([length//motif_size for length in alen_data])
-        data = data.reshape(-1, 1)
-
         #### KDE with mode peaks and valley for definitive split point for each peak based on the area under the peaks
         bandwidth = 10; tot_data_points = 1000 # for amplicon, to get better density estimation and peaks
+        stdev = np.std(data)
+        if stdev != 0:
+            bandwidth = 0.5 * stdev * (len(data) ** (-1/5))
+
+        data = data.reshape(-1, 1)
+
         # Fit kde to the data
         kde = KernelDensity(kernel='gaussian', algorithm='kd_tree', metric='minkowski', bandwidth=bandwidth).fit(data)
         # Evaluate the density on a grid
@@ -207,6 +213,7 @@ def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, 
             labels[(data >= p2_left_split) & (data <= p2_right_split)] = 1
 
     else:
+        tag = 'Ed_Hdbscan'
         data = np.array(alen_data)
         data = data.reshape(-1, 1)
 
@@ -275,39 +282,39 @@ def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, 
             ALT, allele_length, decomp_seq, repeativity = alt_sequence(read_seqs, mac, amplicon, motif_size)
             meth_info = methylation_calc(mac, global_loci_variations, locus_key, ALT)
             if repeativity:
-                vcf_homozygous_writer(ref, contig, locus_key, global_loci_info, allele_length, len(mac), len(read_indices), out, ALT, log_bool, 'kmeans', decomp, hallele_counter, True, allele_range, decomp_seq, meth_info)
+                vcf_homozygous_writer(ref, contig, locus_key, global_loci_info, allele_length, len(mac), len(read_indices), out, ALT, log_bool, tag, decomp, hallele_counter, True, allele_range, decomp_seq, meth_info)
             else:
                 return [False, 6]
         
     elif (c1!=[] and len(c1)>=cutoff) and (c2!=[] and len(c2)>=cutoff):
 
-        bool_state, category = hetero_vcf_call(haplotypes, read_seqs, amplicon, motif_size, [alen_c1, alen_c2], contig, locus_key, read_indices, global_loci_info, global_loci_variations, locus_start, locus_end, ref, out, log_bool, decomp, hallele_counter)
+        bool_state, category = hetero_vcf_call(haplotypes, read_seqs, amplicon, motif_size, [alen_c1, alen_c2], contig, locus_key, read_indices, global_loci_info, global_loci_variations, locus_start, locus_end, ref, out, log_bool, decomp, hallele_counter, tag)
         return [bool_state, category]
     
     elif c1!=[] and len(c1)>=cutoff:
         if amplicon:
             db_status, new_hap, new_alen = dbscan(alen_c1, haplotypes[0])
             if db_status:
-                bool_state, category = hetero_vcf_call(new_hap, read_seqs, amplicon, motif_size, new_alen, contig, locus_key, read_indices, global_loci_info, global_loci_variations, locus_start, locus_end, ref, out, log_bool, decomp, hallele_counter)
+                bool_state, category = hetero_vcf_call(new_hap, read_seqs, amplicon, motif_size, new_alen, contig, locus_key, read_indices, global_loci_info, global_loci_variations, locus_start, locus_end, ref, out, log_bool, decomp, hallele_counter, tag)
                 return [bool_state, category]
             else:
-                bool_state, category = homo_vcf_call(alen_c1, read_seqs, haplotypes[0], len(read_indices), amplicon, motif_size, ref, contig, locus_key, global_loci_info, global_loci_variations, out, log_bool, decomp, hallele_counter)
+                bool_state, category = homo_vcf_call(alen_c1, read_seqs, haplotypes[0], len(read_indices), amplicon, motif_size, ref, contig, locus_key, global_loci_info, global_loci_variations, out, log_bool, decomp, hallele_counter, tag)
                 return [bool_state, category]
         else:
-            bool_state, category = homo_vcf_call(alen_c1, read_seqs, haplotypes[0], len(read_indices), amplicon, motif_size, ref, contig, locus_key, global_loci_info, global_loci_variations, out, log_bool, decomp, hallele_counter)
+            bool_state, category = homo_vcf_call(alen_c1, read_seqs, haplotypes[0], len(read_indices), amplicon, motif_size, ref, contig, locus_key, global_loci_info, global_loci_variations, out, log_bool, decomp, hallele_counter, tag)
             return [bool_state, category]
         
     elif c2!=[] and len(c2)>=cutoff:
         if amplicon:
             db_status, new_hap, new_alen = dbscan(alen_c2, haplotypes[1])
             if db_status:
-                bool_state, category = hetero_vcf_call(new_hap, read_seqs, amplicon, motif_size, new_alen, contig, locus_key, read_indices, global_loci_info, global_loci_variations, locus_start, locus_end, ref, out, log_bool, decomp, hallele_counter)
+                bool_state, category = hetero_vcf_call(new_hap, read_seqs, amplicon, motif_size, new_alen, contig, locus_key, read_indices, global_loci_info, global_loci_variations, locus_start, locus_end, ref, out, log_bool, decomp, hallele_counter, tag)
                 return [bool_state, category]
             else:
-                bool_state, category = homo_vcf_call(alen_c2, read_seqs, haplotypes[1], len(read_indices), amplicon, motif_size, ref, contig, locus_key, global_loci_info, global_loci_variations, out, log_bool, decomp, hallele_counter)
+                bool_state, category = homo_vcf_call(alen_c2, read_seqs, haplotypes[1], len(read_indices), amplicon, motif_size, ref, contig, locus_key, global_loci_info, global_loci_variations, out, log_bool, decomp, hallele_counter, tag)
                 return [bool_state, category]
         else:
-            bool_state, category = homo_vcf_call(alen_c2, read_seqs, haplotypes[1], len(read_indices), amplicon, motif_size, ref, contig, locus_key, global_loci_info, global_loci_variations, out, log_bool, decomp, hallele_counter)
+            bool_state, category = homo_vcf_call(alen_c2, read_seqs, haplotypes[1], len(read_indices), amplicon, motif_size, ref, contig, locus_key, global_loci_info, global_loci_variations, out, log_bool, decomp, hallele_counter, tag)
             return [bool_state, category]
         
     else:
@@ -401,7 +408,7 @@ def analyse_genotype(contig, locus_key, global_loci_info,
 
 
     genotypes = []
-    allele_count = {}
+    allele_count = []
     ALT_seqs = []
     alen_list = []
     meth_info = []
@@ -410,10 +417,11 @@ def analyse_genotype(contig, locus_key, global_loci_info,
         alen_list.append([len(read_seqs[read_id][0]) for read_id in hap_reads])
         ALT_seqs.append(ALT)
         genotypes.append(allele_length)
-        if allele_length not in allele_count:
-            allele_count[allele_length] = len(hap_reads)
-        else:
-            allele_count[str(allele_length)] = len(hap_reads)
+        allele_count.append(len(hap_reads))
+        # if allele_length not in allele_count:
+        #     allele_count[allele_length] = len(hap_reads)
+        # else:
+        #     allele_count[str(allele_length)] = len(hap_reads)
 
         meth_info.append(methylation_calc(hap_reads, global_loci_variations, locus_key, ALT))
 

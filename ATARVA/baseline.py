@@ -39,7 +39,7 @@ def locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, 
             if homozygous_allele != ref_allele_length:
                 seqs = [seq for seq in [read_seqs[read_id][0] for read_id in reads_of_homozygous] if seq!='']
                 if len(seqs)>0:
-                    ALT = consensus_seq_poa(seqs)
+                    ALT = consensus_seq_poa(seqs, False)
                     homozygous_allele = len(ALT)
                 else:
                     ALT = '<DEL>'
@@ -74,7 +74,7 @@ def locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, 
                 tqdm.write(skip_messages.get(skip_point, 'Locus skipped due to less number of significant snps based on user\'s parameter.'))
         elif category == 3:
             genotypes = []
-            allele_count = {}
+            allele_count = []
             ALT_seqs = []
             phased_read = []
             alen_list = []
@@ -84,7 +84,7 @@ def locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, 
                 seqs = [seq for seq in [read_seqs[read_id][0] for read_id in hap_reads] if seq!='']
                 alen_list.append([len(read_seqs[read_id][0]) for read_id in hap_reads])
                 if len(seqs)>0:
-                    ALT = consensus_seq_poa(seqs)
+                    ALT = consensus_seq_poa(seqs, False)
                     allele_length = len(ALT)
                 else:
                     ALT = '<DEL>'
@@ -92,11 +92,11 @@ def locus_processor(global_loci_keys, global_loci_ends, global_loci_variations, 
 
                 ALT_seqs.append(ALT)
                 genotypes.append(allele_length)
-
-                if allele_length not in allele_count:
-                    allele_count[allele_length] = len(hap_reads)
-                else:
-                    allele_count[str(allele_length)] = len(hap_reads)
+                allele_count.append(len(hap_reads))
+                # if allele_length not in allele_count:
+                #     allele_count[allele_length] = len(hap_reads)
+                # else:
+                #     allele_count[str(allele_length)] = len(hap_reads)
 
                 meth_info.append(methylation_calc(hap_reads, global_loci_variations, locus_key, ALT))
 

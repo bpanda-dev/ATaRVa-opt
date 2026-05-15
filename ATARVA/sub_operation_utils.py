@@ -122,7 +122,7 @@ def confidence_interval(data):
 def alt_sequence(read_seqs, hap_reads, amplicon, motif_size):
     seqs = [seq for seq in [read_seqs[read_id][0] for read_id in hap_reads] if seq!='']
     if len(seqs)>0:
-        ALT = consensus_seq_poa(seqs)
+        ALT = consensus_seq_poa(seqs, amplicon)
         allele_length = len(ALT)
     else:
         ALT = '<DEL>'
@@ -238,3 +238,45 @@ def methylation_encoding(matrix, pos_matrix, ALT_seq):
             col_mean= round(col_mean/1.5625) # scaling to 0-64
             encryted_meth += encode64_dict[col_mean]
     return encryted_meth
+
+def longest_pure_repeat(dseq, MOTIF):
+    dseq = dseq.split('-')
+    motif_order = []
+    copies_order = []
+    length_order = []
+    for i in dseq:
+        if '(' in i:
+            end_idx = i.index(')')
+            tmp_motif = i[1:end_idx]
+            motif_order.append(tmp_motif)
+            copy = int(i[end_idx+1:])
+            copies_order.append(copy)
+            length_order.append(copy * len(tmp_motif))
+    if length_order!=[]: # the sequence has atleast one decomposed motif
+        lps_length = max(length_order)
+    else: # the sequence doesnt have enough repeatitions to get decomposed
+        cont_repeat_len = [len(i)//len(MOTIF) for i in re.findall(f"(?:{MOTIF})+", dseq[0])]
+        lps_count = max(cont_repeat_len) if cont_repeat_len!=[] else 0
+        return f'{MOTIF}-{lps_count}'
+    # for multiple longer repeat motifs
+    if length_order.count(lps_length) > 1:
+        maxies_idx = [i for i,k in enumerate(length_order) if k == lps_length] # index of all max length motifs
+        for each_idx in maxies_idx:
+            current_motif = motif_order[each_idx]
+            n = len(current_motif)
+            if MOTIF in [current_motif[i:] + current_motif[:i] for i in range(n)]: # checking the presence of bed motif in cyclic variations
+                lps_motif = MOTIF
+                lps_count = str(copies_order[each_idx])
+                return '-'.join([lps_motif, lps_count])
+    
+    lps_length_idx = length_order.index(lps_length)
+    lps_motif = motif_order[lps_length_idx]
+    lps_count = str(copies_order[lps_length_idx])
+    n = len(lps_motif)
+    if lps_motif == MOTIF:
+        pass
+    elif MOTIF in [lps_motif[i:] + lps_motif[:i] for i in range(n)]:
+        lps_motif = MOTIF
+    else:
+        pass
+    return '-'.join([lps_motif, lps_count])

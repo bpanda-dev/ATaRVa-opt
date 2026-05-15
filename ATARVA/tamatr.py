@@ -81,7 +81,7 @@ def processor(process_df, outfile, tidx, each_thread, total_samples):
         id = '.'
         q = '.'
         alt = ','.join(ALT) if ALT else '.'
-        format = 'GT:AL:CN:AR:SD:DP:SN:SQ:MA:MR:DS:MV'
+        format = 'GT:AL:CN:LPM:AR:SD:DP:SN:SQ:MA:MR:DS:MV'
         #sample = '\t'.join(sample_wise_full_gt)
 
         repeat_info = [chrom, start, id, ref_seq, alt, q, filter, info, format, *sample_wise_full_gt]
@@ -431,6 +431,7 @@ def vcf_writer(out, bam_name, source_vcf_path):
     vcf_header.formats.add("GT", number=1, type="String", description="Genotype")
     vcf_header.formats.add("AL", number=2, type="Integer", description="Allele length in base pairs")
     vcf_header.formats.add("CN", number=2, type="Integer", description="Motif copy number for each allele")
+    vcf_header.formats.add("LPM", number=2, type="String", description="Longest pure motif repeat and its copy number for each allele")
     vcf_header.formats.add("AR", number='.', type="String", description="Allele length range")
     vcf_header.formats.add("SD", number='.', type="Integer", description="Number of reads supporting for the alleles")
     vcf_header.formats.add("PC", number=2, type="Integer", description="Number of reads in the phased cluster for each allele")

@@ -305,7 +305,12 @@ For detailed information on advanced merging options, refer to the [Tamatr](./do
 ## Changelog
 ### v0.7.0
 * Replaced K-means clustering in `--amplicon` mode and non-SNP regions with KDE-based clustering and edit-distance–based HDBSCAN.
-* Forced all loci into `ambiguous` mode to ensure clustering is performed, even when most reads support a single allele.
+* Forced all loci into `haplotyping` mode to ensure clustering is performed, even when most reads support a single allele.
+* Added `LPM` tag in the VCF_SAMPLE column to report longest pure repeat motif and its copy number.
+* Updated ALT allele assignment to prioritize sequence comparison against the reference sequence instead of relying solely on allele length.
+* Improved consensus sequence generation by modifying sequence ordering:
+  * WGS mode now orders sequences based on the mode of allele lengths.
+  * `--amplicon` mode orders sequences alternately from both sides of the median allele length.
 
 ### v0.6.0
 * Fixed an incorrect code modification that caused `--amplicon` mode to produce incorrect results in previous version(V0.5.0)

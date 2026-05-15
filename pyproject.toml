@@ -16,7 +16,8 @@ maintainers = [
   {name = "Abishek Kumar", email = "abishekks@csirccmb.org"}
 ]
 
-keywords = ["tandem repeats", "repeats", "long reads", "ONT", "PacBio", "satellites", "vntr", "tr", "microsatellites", "macrosatellites", "str"]
+keywords = ["tandem repeats", "repeats", "long reads", "ONT", "PacBio", "satellites", "vntr", "tr", "microsatellites", "macrosatellites", "str", "imperfect repeats", "complex repeats", "nested repeats", "haplotyping",
+            "targeted sequencing", "amplicon", "mosaicism", "somatic instability", "motif-analysis", "motif copy", "methylation level", "methylation pattern", "5mC", "modified bases", "motif decomposition", "repeat interruption"]
 dependencies = [
     'numpy>=1.26.4',
     'pyabpoa>=1.5.3',
