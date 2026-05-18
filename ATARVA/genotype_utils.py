@@ -105,7 +105,7 @@ def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
         y_vals = density[mask]
 
         # area = 0.5 * float(base_right - base_left) * float(prominence)
-        area = np.trapz(y_vals, x_vals)
+        area = np.trapezoid(y_vals, x_vals)
         sharpness = prominence / top_contour_widths[idx]
         initial_score.append(area * sharpness)
         base_left = base_right
