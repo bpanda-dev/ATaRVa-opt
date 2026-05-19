@@ -83,7 +83,10 @@ def hetero_vcf_call(haplotypes, read_seqs, amplicon, motif_size, new_alen, conti
 def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
     peak_density = density[initial_peaks]
     valley_density = density[valleys]
+    peak_points = x_grid[initial_peaks]
     initial_score = []
+    initial_prominence = []
+    min_area_covered = []
     for idx in range(len(peak_density)):
         if idx == 0:
             f_dense = density[0]
@@ -94,7 +97,7 @@ def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
         else:
             valley_dense = density[-1]
             base_right = x_grid[-1][0]
-        # diffs = abs(f_dense - valley_dense)
+
         max_point = max(f_dense, valley_dense)
         prominence = (peak_density[idx] - max_point)# - diffs
         f_dense = valley_dense
@@ -104,13 +107,31 @@ def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
         x_vals = flattened_x_grid[mask]
         y_vals = density[mask]
 
-        # area = 0.5 * float(base_right - base_left) * float(prominence)
         area = np.trapezoid(y_vals, x_vals)
-        sharpness = prominence / top_contour_widths[idx]
-        initial_score.append(area * sharpness)
+        if area >= 0.05:
+            min_area_covered.append(True)
+        else:
+            min_area_covered.append(False)
+
+        current_peak = peak_points[idx][0]
+        L = (current_peak - base_left); R = (base_right-current_peak)
+        
+        eps = 1e-8
+        # normalized asymmetry/skewness
+        K = abs(L - R) / (L + R + eps)
+        
+        # final score
+        score = (
+            (prominence ** 2) / ((top_contour_widths[idx] + eps) ** 2)
+        ) * np.exp(-8 * K)
+
+
+        initial_score.append(score)
+        initial_prominence.append(prominence)
+        
         base_left = base_right
         
-    return np.array(initial_score)
+    return np.array(initial_score), initial_prominence, min_area_covered
 
 
 def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, locus_key, read_indices, contig, locus_start, locus_end, ref, out, male, log_bool, decomp, read_seqs, amplicon):
@@ -157,7 +178,7 @@ def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, 
         # Fit kde to the data
         kde = KernelDensity(kernel='gaussian', algorithm='kd_tree', metric='minkowski', bandwidth=bandwidth).fit(data)
         # Evaluate the density on a grid
-        x_grid = np.linspace(data.min()-10, data.max()+10, tot_data_points).reshape(-1, 1)
+        x_grid = np.linspace(data.min()-50, data.max()+50, tot_data_points).reshape(-1, 1)
         log_density = kde.score_samples(x_grid)
         density = np.exp(log_density)
 
@@ -167,16 +188,29 @@ def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, 
         top_contour_widths = peak_widths(density, initial_peaks, rel_height=0.2)
         valleys, _ = find_peaks(-density)
 
-        score = score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths[0])
+        score, initial_prominence, area_covered = score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths[0])
         narrow_peaks_idx = list(np.argsort(score)[-2:]) # taking top two peaks with more area under the curve, as the peaks with higher area will be sharper and more prominent
+
+        top_2_prominence = [initial_prominence[idx] for idx in narrow_peaks_idx]
+        min_height_covered = min(top_2_prominence) >= 0.15 * (max(top_2_prominence)) # min peak should have atleast 15% of the max peak prominence to be considered as a valid peak
+        min_area_covered = all([area_covered[idx] for idx in narrow_peaks_idx]) # both peaks should have atleast 5% of the area covered to be considered as valid peaks
+
+        if min_height_covered or min_area_covered: # any of this should be True to consider both peaks as valid peaks, otherwise only the max peak will be considered for split
+            pass
+        elif narrow_peaks_idx[0] > narrow_peaks_idx[1]: # if the min_peak is on right side of the max_peak, consider both peaks as valid; to report the longer allele
+            pass
+        else: # if the min_peak is left side of the max_peak, then consider only the max_peak as valid and as homozygous 
+            narrow_peaks_idx = [narrow_peaks_idx[1]]
+
         width = sorted(original_widths[0][narrow_peaks_idx])
+        top_count = len(narrow_peaks_idx)
 
         # Getting new peaks with analysed data
         peaks, _ = find_peaks(density, width = width)
 
         # Choose split 
         peak_heights = density[peaks] # extracting only the peaks frim density
-        top_peaks = peaks[np.argsort(peak_heights)[-2:]] # taking top two peaks
+        top_peaks = peaks[np.argsort(peak_heights)[-top_count:]] # taking top two peaks
         sorted_peaks = sorted(top_peaks)
 
         # flattening the data and initializing the labels for each data point as -1 (unassigned)

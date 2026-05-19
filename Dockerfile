@@ -7,7 +7,7 @@
 # Summary:          ATaRVa is a tandem repeat genotyper, specially designed for long read data.
 # Website:          https://github.com/SowpatiLab/ATaRVa
 # License:          MIT
-# Base Image:       python:3.9.5
+# Base Image:       python:3.12.2
 # Tags:             Genomics, Next-Generation Sequencing, Bioinformatics, Tandem repeats, STR, VNTR, repeats, ONT, PacBio, microsatellites, long reads
 # Maintainers:      Akshay Kumar Avvaru <avvaruakshay@gmail.com>, Abishek Kumar <abishekks@csirccmb.org>
 # Build Cmd:        docker build -f Dockerfile -t atarva .
@@ -15,7 +15,7 @@
 #################################################################
 
 # Getting python from Docker Hub
-FROM python:3.9.5
+FROM python:3.12.2
 
 # Setting working directory
 WORKDIR /app

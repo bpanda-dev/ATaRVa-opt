@@ -30,7 +30,7 @@ dependencies = [
     'regex>=2025.9.1',
     'hdbscan>=0.8.40',
     'polars>=1.31.0',
-    'stringzilla==3.10.9'
+    'stringzilla==3.12.6'
 ]
 classifiers = [
     'Development Status :: 4 - Beta',
