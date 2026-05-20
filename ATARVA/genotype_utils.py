@@ -86,7 +86,7 @@ def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
     peak_points = x_grid[initial_peaks]
     initial_score = []
     initial_prominence = []
-    min_area_covered = []
+    area_covered = []
     for idx in range(len(peak_density)):
         if idx == 0:
             f_dense = density[0]
@@ -108,10 +108,11 @@ def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
         y_vals = density[mask]
 
         area = np.trapezoid(y_vals, x_vals)
-        if area >= 0.05:
-            min_area_covered.append(True)
-        else:
-            min_area_covered.append(False)
+        area_covered.append(area)
+        # if area >= 0.05:
+        #     min_area_covered.append(True)
+        # else:
+        #     min_area_covered.append(False)
 
         current_peak = peak_points[idx][0]
         L = (current_peak - base_left); R = (base_right-current_peak)
@@ -131,7 +132,7 @@ def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
         
         base_left = base_right
         
-    return np.array(initial_score), initial_prominence, min_area_covered
+    return np.array(initial_score), initial_prominence, area_covered
 
 
 def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, locus_key, read_indices, contig, locus_start, locus_end, ref, out, male, log_bool, decomp, read_seqs, amplicon):
@@ -193,11 +194,11 @@ def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, 
 
         top_2_prominence = [initial_prominence[idx] for idx in narrow_peaks_idx]
         min_height_covered = min(top_2_prominence) >= 0.15 * (max(top_2_prominence)) # min peak should have atleast 15% of the max peak prominence to be considered as a valid peak
-        min_area_covered = all([area_covered[idx] for idx in narrow_peaks_idx]) # both peaks should have atleast 5% of the area covered to be considered as valid peaks
+        min_area_covered = all([area_covered[idx]>=0.05 for idx in narrow_peaks_idx]) # both peaks should have atleast 5% of the area covered to be considered as valid peaks
 
         if min_height_covered or min_area_covered: # any of this should be True to consider both peaks as valid peaks, otherwise only the max peak will be considered for split
             pass
-        elif narrow_peaks_idx[0] > narrow_peaks_idx[1]: # if the min_peak is on right side of the max_peak, consider both peaks as valid; to report the longer allele
+        elif (narrow_peaks_idx[0] > narrow_peaks_idx[1]) and (area_covered[narrow_peaks_idx[0]] >= 0.02): # if the min_peak is on right side of the max_peak and if it has atleast 2% of total area consider both peaks as valid; to report the longer allele
             pass
         else: # if the min_peak is left side of the max_peak, then consider only the max_peak as valid and as homozygous 
             narrow_peaks_idx = [narrow_peaks_idx[1]]
@@ -227,7 +228,9 @@ def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, 
         p1_left_split = x_grid[p1_start][0]
         p1_right_split = x_grid[p1_end][0]
 
-        labels[(data >= p1_left_split) & (data <= p1_right_split)] = 0
+        p1_allele_bool = (data >= p1_left_split) & (data <= p1_right_split)
+        if p1_allele_bool.sum() > 4: # atleast 5 reads should be there in cluster to consider it as valid cluster
+            labels[p1_allele_bool] = 0
 
         if len(sorted_peaks) > 1:
             right = sorted_peaks[1]
@@ -240,7 +243,11 @@ def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, 
             p2_left_split = x_grid[p2_start][0]
             p2_right_split = x_grid[p2_end][0]
 
-            labels[(data >= p2_left_split) & (data <= p2_right_split)] = 1
+            labels[(data >= p2_left_split) & (data <= p2_right_split)] = 1 # no min read cutoff for the longer allele
+
+            # p2_allele_bool = (data >= p2_left_split) & (data <= p2_right_split)
+            # if p2_allele_bool.sum() > 4: # atleast 5 reads should be there in cluster to consider it as valid cluster
+            #     labels[(data >= p2_left_split) & (data <= p2_right_split)] = 1
 
     else:
         tag = 'Ed_Hdbscan'
@@ -313,6 +320,8 @@ def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, 
                 vcf_homozygous_writer(ref, contig, locus_key, global_loci_info, allele_length, len(mac), len(read_indices), out, ALT, log_bool, tag, decomp, hallele_counter, True, allele_range, decomp_seq, meth_info)
             else:
                 return [False, 6]
+        else:
+            return [False, 6]
         
     elif (c1!=[] and len(c1)>=cutoff) and (c2!=[] and len(c2)>=cutoff):
 
