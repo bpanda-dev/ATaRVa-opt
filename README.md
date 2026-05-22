@@ -1,5 +1,5 @@
 # ATaRVa - a tandem repeat genotyper
-![Badge-PyPI](https://img.shields.io/badge/PyPI-v0.7.0-brightgreen)
+![Badge-PyPI](https://img.shields.io/badge/PyPI-v0.7.1-brightgreen)
 ![Badge-License](https://img.shields.io/badge/License-MIT-blue)
 
 <p align=center>
@@ -62,7 +62,7 @@ $ deactivate
 ```
 Both of the methods add a console command `atarva`, which can be executed from any directory
 
-<!-- **NOTE: This tool has been tested and is recommended to be used with Python versions between 3.9 and 3.12 (inclusive).** -->
+**NOTE: This tool has been tested and is recommended to be used with Python versions between 3.9 and 3.13 (inclusive).**
 
 ### Docker installation
 ATaRVa can also be installed using the provided **Docker** image with the following steps:
@@ -317,6 +317,10 @@ VisuaMiTRa allows users to compare motif structure and methylation levels within
 </div>
 
 ## Changelog
+### v0.7.1
+* Fixed NumPy version dependency issues across Python versions
+* Updated the KDE clustering score calculation formula by incorporating a skewness-based parameter
+
 ### v0.7.0
 * Replaced K-means clustering in `--amplicon` mode and non-SNP regions with KDE-based clustering and edit-distance–based HDBSCAN.
 * Forced all loci into `haplotyping` mode to ensure clustering is performed, even when most reads support a single allele.

@@ -38,7 +38,7 @@ classifiers = [
     'Intended Audience :: Science/Research',
     'Topic :: Scientific/Engineering :: Bio-Informatics',
 ]
-requires-python = "==3.9"
+requires-python = ">=3.9.5,<=3.13.9"
 
 
 [project.urls]

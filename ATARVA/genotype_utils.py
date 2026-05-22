@@ -86,6 +86,7 @@ def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
     peak_points = x_grid[initial_peaks]
     initial_score = []
     initial_prominence = []
+    initial_skewness = []
     area_covered = []
     for idx in range(len(peak_density)):
         if idx == 0:
@@ -107,32 +108,38 @@ def score_calc(x_grid, density, initial_peaks, valleys, top_contour_widths):
         x_vals = flattened_x_grid[mask]
         y_vals = density[mask]
 
-        area = np.trapezoid(y_vals, x_vals)
+        area = np.trapz(y_vals, x_vals)
         area_covered.append(area)
-        # if area >= 0.05:
-        #     min_area_covered.append(True)
-        # else:
-        #     min_area_covered.append(False)
+        min_area = 1 if area >= 0.02 else 0 # min area covered by the peak should be atleast 2% to be considered as valid peak
 
         current_peak = peak_points[idx][0]
-        L = (current_peak - base_left); R = (base_right-current_peak)
+        L = (current_peak - base_left); R = (base_right-current_peak) # distance between left boundary to the peak and right boundary to the peak
         
         eps = 1e-8
         # normalized asymmetry/skewness
         K = abs(L - R) / (L + R + eps)
+        initial_skewness.append(K)
         
         # final score
         score = (
             (prominence ** 2) / ((top_contour_widths[idx] + eps) ** 2)
-        ) * np.exp(-8 * K)
+        ) * min_area
 
 
         initial_score.append(score)
         initial_prominence.append(prominence)
         
         base_left = base_right
+
+    initial_skewness = np.array(initial_skewness)
+    median_K = np.median(initial_skewness)
+    mad_K = np.median( np.abs( initial_skewness - median_K ) ) + 1e-8
+    zK = (initial_skewness - median_K) / mad_K
+    quality_zk = 1 / (1 + np.exp(zK))
+
+    final_score = ( np.array(initial_score) * quality_zk )
         
-    return np.array(initial_score), initial_prominence, area_covered
+    return final_score, initial_prominence, area_covered
 
 
 def length_genotyper(hallele_counter, global_loci_info, global_loci_variations, locus_key, read_indices, contig, locus_start, locus_end, ref, out, male, log_bool, decomp, read_seqs, amplicon):
