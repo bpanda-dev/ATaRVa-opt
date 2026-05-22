@@ -101,7 +101,7 @@ Options:
 
 Overview of the ATaRVa worflow:
 1. ATaRVa processes the input BAM file read-wise, assuming that most long reads span multiple TR loci.
-2. After flank realignment and adjustment of read-wise allele lengths, ATaRVa clusters reads into haplotypes using nearby informative *SNV*s, or applies a *k-means* clustering approach when SNV information is unavailable.
+2. After flank realignment and adjustment of read-wise allele lengths, ATaRVa clusters reads into haplotypes using nearby informative *SNV*s, or applies a *edit-distance* based clustering approach when SNV information is unavailable.
 3. It derives consensus allele sequences using partial order alignment, decomposes each TR allele into motif-level representations, and outputs the results in VCF format.
 
 The help message and available options can be accessed using

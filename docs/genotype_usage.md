@@ -56,77 +56,77 @@ Optional arguments:
 
 The details of each option are given below:
 
-#### `--format`
+### `--format`
 **Expects**: *STRING*<br>
 **Default**: *bam*<br>
 This option sets the format of the alignment file. The default format is BAM. Specify the input format as `sam` for SAM files, `cram` for CRAM files, or `bam` for BAM files.  
 
-#### `-q or --map-qual`
+### `-q or --map-qual`
 **Expects**: *INTEGER*<br>
 **Default**: *5*<br>
 Minimum mapping quality for the reads to be considered. All reads with a mapping quality below the specified value will be excluded during genotyping.
 
-#### `--contigs`
+### `--contigs`
 **Expects**: *STRING*<br>
 **Default**: *None*<br>
 Specify the chromosome(s) for genotyping; repeat loci on all other chromosomes will be skipped. If no chromosomes are mentioned, repeats on all chromosomes in the BED file will be genotyped. eg: `--contigs chr1 chr12 chr22` will genotype only the repeat loci in these mentioned chromosomes in the BED file.
 
-#### `--min-reads`
+### `--min-reads`
 **Expects**: *INTEGER*<br>
 **Default**: *10*<br>
 Minimum number of the supporting reads required to genotype a locus. If the number of reads is less than this value, the locus will be skipped.
 
-#### `--max-reads`
+### `--max-reads`
 **Expects**: *INTEGER*<br>
 **Default**: *100*<br>
 Maximum number of supporting reads allowed for a locus to be genotyped. If the number of reads exceeds this limit, only this specified number of reads will be used for genotyping the locus.
 
-#### `--snp-dist`
+### `--snp-dist`
 **Expects**: *INTEGER*<br>
 **Default**: *3000*<br>
 Maximum base pair (bp) distance from the flanks of the repeat locus to fetch SNPs from each read considered for phasing.
 
-#### `--snp-count`
+### `--snp-count`
 **Expects**: *INTEGER*<br>
 **Default**: *3*<br>
 Maximum number of SNPs to be used for read clustering and phasing.
 
-#### `--snp-qual`
+### `--snp-qual`
 **Expects**: *INTEGER*<br>
 **Default**: *20*<br>
 Minimum Q value of the SNPs to be used for phasing.
 
-#### `--flank`
+### `--flank`
 **Expects**: *INTEGER*<br>
 **Default**: *10*<br>
 The number of base pairs in the flanking regions to be used for realignment.
 
-#### `--snp-read`
+### `--snp-read`
 **Expects**: *FLOAT*<br>
 **Default**: *0.2*<br>
 Minimum fraction of SNPs in the supporting reads of the repeat locus allowed for phasing.
 
-#### `--meth-prob`
+### `--meth-prob`
 **Expects**: *FLOAT*<br>
 **Default**: *0.5*<br>
 Minimum probability value of methylation call to be considered for calculation, in the supporting reads of the repeat locus.
 
-#### `--phasing-read`
+### `--phasing-read`
 **Expects**: *FLOAT*<br>
 **Default**: *0.4*<br>
 Minimum fraction of reads required in both clusters relative to the total supporting reads for the repeat locus after phasing.
 
-#### `--karyotype`
+### `--karyotype`
 **Expects**: *STRING*<br>
 **Default**: *XX*<br>
 Karyotype of the samples eg. XX or XY.
 
-#### `-t or --threads`
+### `-t or --threads`
 **Expects**: *INTEGER*<br>
 **Default**: *1*<br>
 Number of threads to use for the process.
 
-#### `--haplotag`
+### `--haplotag`
 **Expects**: *STRING*<br>
 **Default**: *None*<br>
 Specify the haplotype tag to utilize phased information for genotyping. eg `HP`
@@ -135,7 +135,7 @@ Specify the haplotype tag to utilize phased information for genotyping. eg `HP`
   <p><i>Haplotag based clustering of reads</i></p>
 </div>
 
-#### `--decompose`
+### `--decompose`
 Performs motif-decomposition on ALT sequences.
 <div align=center>
   <img src="../lib/MD.png" alt="Motif decomposition" width="500"/>
@@ -144,22 +144,22 @@ Performs motif-decomposition on ALT sequences.
 <br>
 **NOTE: Only applicable for motif length <= 10**
 
-#### `--methviz`
+### `--methviz`
 Calculates site-level methylation levels for CG bases(5mC) within the repeat region and writes them as a base64-encoded MV tag in the VCF SAMPLE column.
 
-#### `--amplicon`
+### `--amplicon`
 Genotyping mode for targeted sequencing data. In this mode, the default values for `max-reads` and `flank` values are 1000 and 20 respectively.
 
 ### `--somatic`
 Genotyping mode optimized for mosaic samples, where multiple alleles beyond diploid genotypes may occur. It operates similarly to the `amplicon` mode but incorporates hierarchical clustering based on sequence composition to resolve complex allele mixtures.
 
-#### `--read-wise`
+### `--read-wise`
 Classical ATaRVa genotyping mode, where loci are genotyped read-wise, utilizing the length advantage of the long reads to genotype multiple loci simultaneously (default : True)
 
-#### `--loci-wise`
+### `--loci-wise`
 Genotyping mode for BED files with sparse regions across chromosomes or for BED files containing a small number of loci(<500). In this mode, loci are genotyped independently rather than using a read-wise approach.
 
-#### `-v or --version`
+### `-v or --version`
 Prints the version info of ATaRVa.
 
 ## Examples
